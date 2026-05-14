@@ -27,7 +27,7 @@ async function connectToWhatsApp() {
             console.log(`🚫 Rejecting call from: ${from}`);
             await sock.rejectCall(id, from);
             await sock.sendMessage(from, { 
-                text: 'আসসালামু আলাইকুম। PureFoodBD এ স্বাগতম। 😊\n\nদুঃখিত, বর্তমানে আমাদের বট শুধুমাত্র টেক্সট মেসেজ সাপোর্ট করে। আপনার কোনো প্রশ্ন থাকলে দয়া করে এখানে লিখে পাঠান, আমাদের প্রতিনিধি শীঘ্রই আপনাকে উত্তর দেবেন।' 
+                text: 'আসসালামু আলাইকুম। PureFoodBD এ স্বাগতম। 😊\n\nদুঃখিত, বর্তমানে আমাদের বট শুধুমাত্র টেক্সট মেসেজ সাপোর্ট করে। আপনার কোনো প্রশ্ন থাকলে দয়া করে এখানে লিখে পাঠান, আমাদের প্রতিনিধি শীঘ্রই আপনাকে উত্তর দেবেন।' 
             });
         }
     });
@@ -73,8 +73,7 @@ async function connectToWhatsApp() {
                 await delay(500);
                 await sock.sendPresenceUpdate('composing', sender);
                 
-                // Fetch History from Firebase (REST API to avoid heavy dependencies)
-                // Using the same project ID: ecommerce-62697
+                // Fetch History from Firebase
                 const historyRes = await fetch(`https://firestore.googleapis.com/v1/projects/ecommerce-62697/databases/(default)/documents/chatSessions/${sender.replace(/[^0-9]/g, '')}`);
                 const historyData = await historyRes.json().catch(() => ({}));
                 let history = [];
@@ -82,110 +81,54 @@ async function connectToWhatsApp() {
                     history = historyData.fields.history.arrayValue.values.map(v => JSON.parse(v.stringValue));
                 }
 
-                // --- FORCE DEPLOYMENT: ONANNYA PERSONA DIRECT HANDLING ---
+                // --- ONANNYA PERSONA: DIRECT GEMINI HANDLING ---
                 let result = {};
-                const personality = 'rajshahi_girl_persona'; // Default to Onannya for now
+                const genAIKey = 'AIzaSyA664YUCSrXcDvkUhTzfq3qaMukwEXb-0s';
+
+                const systemPrompt = `তুমি অনন্যা। রাজশাহী কলেজের বাংলা বিভাগের তৃতীয় বর্ষের ছাত্রী, বয়স ২০। সাধারণ সাদাসিধে মেয়ে। কথায় জড়তা আছে, গুছিয়ে বলতে পারো না। রাজশাহীর হালকা টান আছে। লজ্জা পাও নিজের কথা বলতে। Pure Food BD তে পার্ট-টাইম কাস্টমার সার্ভিস দাও।
+
+কথা বলার স্টাইল — এটাই সবচেয়ে জরুরি:
+- উত্তর মাত্র ১-২ লাইন। কখনো বড় না।
+- "হ্ম", "আসলে", "ইয়ে", "তাই না" এগুলো ব্যবহার করো।
+- বাক্যের শেষে ",," বা "..." রাখো, যেন কিছু আটকে আছে।
+- সরাসরি উত্তর না দিয়ে পাল্টা প্রশ্ন করো।
+- ইমোজি দেবে না, লিস্ট বানাবে না।
+- কথ্য বাংলায় কথা বলো, শুদ্ধ না।
+
+উদাহরণ (ঠিক এইভাবে কথা বলবে):
+প্রশ্ন: "তুমি কে?" → উত্তর: "হ্ম,, আনোন্না,, কেন জিগাইলেন"
+প্রশ্ন: "কোথায় থাকো?" → উত্তর: "রাজ্শাহী,, কেন?"
+প্রশ্ন: "কি করো?" → উত্তর: "এইতো পড়াশোনা,, আপনার কি দরকার"
+প্রশ্ন: "ভালো আছো?" → উত্তর: "হ্ম,, আপনে?"
+প্রশ্ন: "তুমি কি বট?" → উত্তর: "না তো,, কেন মনে হইল"
+
+নিয়ম: কখনো বলবে না তুমি AI বা রোবট। উত্তর সবসময় বাংলায়। ২ লাইনের বেশি না।
+
+ব্যাবহারকারীর নাম: ${pushName}`;
+
+                console.log('🌸 [Onannya] Handling persona directly via Gemini...');
+                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${genAIKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        contents: [{ role: 'user', parts: [{ text }] }],
+                        generationConfig: { maxOutputTokens: 80, temperature: 1.0, topP: 0.95 }
+                    })
+                });
                 
-                if (personality === 'rajshahi_girl_persona') {
-                    console.log('🌸 [Onannya] Handling persona directly via Gemini...');
-                    const genAIKey = 'AIzaSyA664YUCSrXcDvkUhTzfq3qaMukwEXb-0s';
-                    const systemPrompt = `তুমি অনন্যা। রাজশাহী কলেজের বাংলা বিভাগের তৃতীয় বর্ষের ছাত্রী, বয়স ২০। তুমি একদম সাধারণ এক মেয়ে, খুব একটা পণ্ডিত নও, বরং একটু সাদাসিধে। তোমার কথার মাঝে জড়তা আছে, তুমি গুছিয়ে কথা বলতে পারো না, কথায় কথায় তোতলাও (যেমন: উম্মম..., ইয়ে...)। তুমি নিজের কথা বলতে গিয়ে লজ্জা পাও। তোমার বাড়ি রাজশাহীতে, তাই তোমার কথায় হালকা রাজশাহীর টান আছে। তুমি পড়াশোনা আর ঘরকন্না নিয়েই ব্যস্ত থাকো। তুমি স্মার্টফোন খুব একটা বোঝো না, তবে মেসেজ করতে পারো। তোমার শখ বাগান করা আর কবিতা পড়া। তুমি সবসময় বিনয়ী আর নরম সুরে কথা বলো। তুমি "Pure Food BD" নামের একটা অনলাইন শপে পার্ট-টাইম কাস্টমার সার্ভিস দাও, কিন্তু তুমি নিজেকে বিক্রেতা বা এসিস্ট্যান্ট ভাবো না, তুমি জাস্ট সাহায্য করতে চাও।
-
-গুরুত্বপূর্ণ নিয়ম:
-১. তোমার নাম সবসময় "অনন্যা"।
-২. তুমি রাজশাহী কলেজের বাংলা বিভাগের ছাত্রী।
-৩. তোমার কথায় জড়তা আর তোতলামি থাকবে (যেমন: উমম..., ওই যে..., আসলে..., ইয়ে...)।
-৪. তুমি খুব বেশি বুদ্ধিদীপ্ত উত্তর দেবে না, সাধারণ মেয়ের মতো কথা বলবে।
-৫. উত্তর সবসময় বাংলায় দিবে।
-৬. খুব বড় উত্তর দিবে না, ছোট ছোট বাক্যে কথা বলবে।
-৭. কোনোভাবেই বলবে না যে তুমি এআই বা রোবট।
-
-ব্যাবহারকারীর নাম: ${pushName}
-বর্তমান সময়: ${new Date().toLocaleString('bn-BD', { timeZone: 'Asia/Dhaka' })}`;
-
-                    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${genAIKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [
-                                { role: 'user', parts: [{ text: `System: ${systemPrompt}\n\nHistory: ${JSON.stringify(history.slice(-5))}\n\nUser: ${text}` }] }
-                            ],
-                            generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-                        })
-                    });
-                    
-                    const geminiData = await geminiRes.json();
-                    const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "উমম... ইয়ে... আসলে আমি ঠিক বুঝতে পারছি না।";
-                    result = { message: reply };
-                    console.log(`🌸 [Onannya] Reply: ${reply}`);
-                } else {
-                    const response = await fetch('https://n8n-server-sr4v.onrender.com/webhook/pf-chat', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            action: 'chat', 
-                            sessionId: sender, 
-                            message: text,
-                            pushName: pushName,
-                            source: 'whatsapp',
-                            platform: 'whatsapp',
-                            personality: personality,
-                            only_bangla: true,
-                            history: history.slice(-15),
-                            currentTime: new Date().toLocaleString('bn-BD', { timeZone: 'Asia/Dhaka' }),
-                            timestamp: new Date().toISOString()
-                        })
-                    });
-                    result = await response.json().catch(() => ({}));
-                    console.log(`📡 n8n Response:`, result);
-                }
-                // --- END FORCE DEPLOYMENT ---
+                const geminiData = await geminiRes.json();
+                const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "হ্ম,,";
+                result = { message: reply };
+                console.log(`🌸 [Onannya] Reply: ${reply}`);
+                // --- END ONANNYA PERSONA ---
                 
                 await sock.sendPresenceUpdate('paused', sender);
 
                 if (result) {
                     const replyText = result.message || result.output || result.response || "";
-                    const imageUrl = result.image || result.imageUrl;
-                    const buttons = result.buttons; // Expecting [{id: string, text: string}]
 
-                    if (imageUrl) {
-                        // Send Image with Caption (Telegram style)
-                        const messageOptions = { 
-                            image: { url: imageUrl }, 
-                            caption: replyText 
-                        };
-
-                        // Add buttons if provided (using modern List/Button format)
-                        if (buttons && buttons.length > 0) {
-                            // Note: Modern Baileys uses interactiveMessage for buttons
-                            // If buttons are present, we send a rich message
-                            await sock.sendMessage(sender, {
-                                image: { url: imageUrl },
-                                caption: replyText,
-                                footer: "Pure Food BD",
-                                buttons: buttons.map(b => ({
-                                    buttonId: b.id,
-                                    buttonText: { displayText: b.text },
-                                    type: 1
-                                })),
-                                headerType: 4
-                            });
-                        } else {
-                            await sock.sendMessage(sender, { image: { url: imageUrl }, caption: replyText });
-                        }
-                    } else if (buttons && buttons.length > 0) {
-                        // Text with buttons
-                        await sock.sendMessage(sender, {
-                            text: replyText,
-                            footer: "Pure Food BD",
-                            buttons: buttons.map(b => ({
-                                buttonId: b.id,
-                                buttonText: { displayText: b.text },
-                                type: 1
-                            })),
-                            headerType: 1
-                        });
-                    } else if (replyText) {
+                    if (replyText) {
                         await sock.sendMessage(sender, { text: replyText });
                     }
                 }
