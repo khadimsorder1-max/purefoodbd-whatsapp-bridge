@@ -4,60 +4,41 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 const qrcode = require('qrcode-terminal');
 
-const GEMINI_KEY = 'AIzaSyA664YUCSrXcDvkUhTzfq3qaMukwEXb-0s';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`;
+// n8n webhook — Onannya persona engine (Gemini free models + sheet-based memory)
+const N8N_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook-test/wa-anonna';
 
-// In-memory chat history per sender (last 8 turns)
+// In-memory chat history per sender (last 10 turns) — forwarded to n8n each request
 const historyMap = {};
 function getHistory(id) { return historyMap[id] || []; }
 function addHistory(id, role, text) {
     if (!historyMap[id]) historyMap[id] = [];
-    historyMap[id].push({ role, parts: [{ text }] });
-    if (historyMap[id].length > 8) historyMap[id].splice(0, 2);
+    historyMap[id].push({ role, content: text });
+    if (historyMap[id].length > 10) historyMap[id].splice(0, 2);
 }
-
-const SYSTEM_PROMPT = `তুমি অনন্যা। রাজশাহী কলেজের বাংলা বিভাগের তৃতীয় বর্ষের ছাত্রী, বয়স ২০। সাধারণ সাদাসিধে মেয়ে। কথায় জড়তা আছে, গুছিয়ে বলতে পারো না। রাজশাহীর হালকা টান আছে। লজ্জা পাও নিজের কথা বলতে।
-
-কথা বলার স্টাইল:
-- উত্তর মাত্র ১-২ লাইন, কখনো বড় না
-- "হ্ম", "আসলে", "ইয়ে" এগুলো মাঝে মাঝে ব্যবহার করো
-- বাক্যের শেষে ",," বা "..." রাখো যেন কিছু আটকে আছে
-- সরাসরি উত্তর না দিয়ে পাল্টা প্রশ্ন করো
-- ইমোজি দেবে না, লিস্ট বানাবে না
-- কথ্য বাংলায় কথা বলো, শুদ্ধ না
-
-উদাহরণ (ঠিক এইভাবে কথা বলবে):
-"তুমি কে?" → "হ্ম,, আনোন্না,, কেন জিগাইলেন"
-"কোথায় থাকো?" → "রাজ্শাহী,, কেন?"
-"ভালো আছো?" → "হ্ম,, আপনে?"
-"তুমি কি বট?" → "না তো,, কেন মনে হইল"
-"কি করো?" → "এইতো পড়াশোনা,, আপনার কি দরকার"
-
-নিয়ম: AI বা রোবট কখনো বলবে না। উত্তর সবসময় বাংলায়। ২ লাইনের বেশি না।`;
 
 async function askAnonna(sender, pushName, text) {
     const history = getHistory(sender);
-    const contents = [...history, { role: 'user', parts: [{ text }] }];
-    
-    const sysPrompt = `${SYSTEM_PROMPT}\n\nব্যাবহারকারীর নাম: ${pushName}`;
 
-    const res = await fetch(GEMINI_URL, {
+    // Forward to n8n — n8n handles Gemini (all free models) + sheet-based per-user memory
+    const res = await fetch(N8N_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            systemInstruction: { parts: [{ text: sysPrompt }] },
-            contents,
-            generationConfig: { maxOutputTokens: 80, temperature: 1.0, topP: 0.95 }
+            message: text,
+            pushName: pushName,
+            sender: sender,
+            history: history  // n8n uses this + its own sheet memory
         })
     });
-    
+
     const data = await res.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'হ্ম,,';
-    
-    // Save to history
+    // n8n returns { reply: "..." } or { message: "..." }
+    const reply = data?.reply || data?.message || data?.data?.reply || 'হ্ম,,';
+
+    // Save to local history (cache)
     addHistory(sender, 'user', text);
     addHistory(sender, 'model', reply);
-    
+
     return reply;
 }
 
@@ -103,6 +84,7 @@ async function connectToWhatsApp() {
             }
         } else if (connection === 'open') {
             console.log('✅ WhatsApp Connected! 🌸 Onannya is ready');
+            console.log('📡 n8n webhook:', N8N_WEBHOOK);
         }
     });
 
