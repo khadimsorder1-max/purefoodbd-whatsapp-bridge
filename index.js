@@ -4,6 +4,17 @@ const fs = require('fs');
 const fetch = require('node-fetch');
 const qrcode = require('qrcode-terminal');
 
+const WA_ANONNA_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook/wa-anonna';
+
+// Simple in-memory history (last 6 messages per sender)
+const historyMap = {};
+function getHistory(sender) { return historyMap[sender] || []; }
+function saveHistory(sender, role, text) {
+    if (!historyMap[sender]) historyMap[sender] = [];
+    historyMap[sender].push({ role, content: text });
+    if (historyMap[sender].length > 12) historyMap[sender].splice(0, 2);
+}
+
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
     const { version } = await fetchLatestBaileysVersion();
@@ -26,17 +37,17 @@ async function connectToWhatsApp() {
         if (status === 'offer') {
             console.log(`🚫 Rejecting call from: ${from}`);
             await sock.rejectCall(id, from);
-            await sock.sendMessage(from, { 
-                text: 'আসসালামু আলাইকুম। PureFoodBD এ স্বাগতম। 😊\n\nদুঃখিত, বর্তমানে আমাদের বট শুধুমাত্র টেক্সট মেসেজ সাপোর্ট করে। আপনার কোনো প্রশ্ন থাকলে দয়া করে এখানে লিখে পাঠান, আমাদের প্রতিনিধি শীঘ্রই আপনাকে উত্তর দেবেন।' 
+            await sock.sendMessage(from, {
+                text: 'আসসালামু আলাইকুম। দুঃখিত, বর্তমানে কল সাপোর্ট করা হয় না। টেক্সট মেসেজ পাঠান।'
             });
         }
     });
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
-        
+
         if (qr) {
-            console.log('📱 QR কোড স্ক্যান করতে নিচের লিঙ্কে ক্লিক করুন:');
+            console.log('📱 QR Code:');
             console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`);
             qrcode.generate(qr, { small: true });
         }
@@ -50,7 +61,7 @@ async function connectToWhatsApp() {
                 setTimeout(connectToWhatsApp, 3000);
             }
         } else if (connection === 'open') {
-            console.log('✅ WhatsApp Bot Connected Successfully!');
+            console.log('✅ WhatsApp Connected! Onannya is ready 🌸');
         }
     });
 
@@ -60,82 +71,53 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe || !msg.message) return;
 
         const sender = msg.key.remoteJid;
-        const pushName = msg.pushName || 'Customer';
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "";
+        const pushName = msg.pushName || 'বন্ধু';
+        const text = msg.message.conversation
+            || msg.message.extendedTextMessage?.text
+            || msg.message.imageMessage?.caption
+            || '';
 
-        // Read receipt
         await sock.readMessages([msg.key]);
 
-        if (text || msg.message.imageMessage) {
-            console.log(`📩 [WhatsApp] ${pushName}: ${text}`);
-            
-            try {
-                await delay(500);
-                await sock.sendPresenceUpdate('composing', sender);
-                
-                // Fetch History from Firebase
-                const historyRes = await fetch(`https://firestore.googleapis.com/v1/projects/ecommerce-62697/databases/(default)/documents/chatSessions/${sender.replace(/[^0-9]/g, '')}`);
-                const historyData = await historyRes.json().catch(() => ({}));
-                let history = [];
-                if (historyData?.fields?.history?.arrayValue?.values) {
-                    history = historyData.fields.history.arrayValue.values.map(v => JSON.parse(v.stringValue));
-                }
+        if (!text) return;
 
-                // --- ONANNYA PERSONA: DIRECT GEMINI HANDLING ---
-                let result = {};
-                const genAIKey = 'AIzaSyA664YUCSrXcDvkUhTzfq3qaMukwEXb-0s';
+        console.log(`📩 [${pushName}]: ${text}`);
 
-                const systemPrompt = `তুমি অনন্যা। রাজশাহী কলেজের বাংলা বিভাগের তৃতীয় বর্ষের ছাত্রী, বয়স ২০। সাধারণ সাদাসিধে মেয়ে। কথায় জড়তা আছে, গুছিয়ে বলতে পারো না। রাজশাহীর হালকা টান আছে। লজ্জা পাও নিজের কথা বলতে। Pure Food BD তে পার্ট-টাইম কাস্টমার সার্ভিস দাও।
+        try {
+            await delay(300);
+            await sock.sendPresenceUpdate('composing', sender);
 
-কথা বলার স্টাইল — এটাই সবচেয়ে জরুরি:
-- উত্তর মাত্র ১-২ লাইন। কখনো বড় না।
-- "হ্ম", "আসলে", "ইয়ে", "তাই না" এগুলো ব্যবহার করো।
-- বাক্যের শেষে ",," বা "..." রাখো, যেন কিছু আটকে আছে।
-- সরাসরি উত্তর না দিয়ে পাল্টা প্রশ্ন করো।
-- ইমোজি দেবে না, লিস্ট বানাবে না।
-- কথ্য বাংলায় কথা বলো, শুদ্ধ না।
+            const history = getHistory(sender);
 
-উদাহরণ (ঠিক এইভাবে কথা বলবে):
-প্রশ্ন: "তুমি কে?" → উত্তর: "হ্ম,, আনোন্না,, কেন জিগাইলেন"
-প্রশ্ন: "কোথায় থাকো?" → উত্তর: "রাজ্শাহী,, কেন?"
-প্রশ্ন: "কি করো?" → উত্তর: "এইতো পড়াশোনা,, আপনার কি দরকার"
-প্রশ্ন: "ভালো আছো?" → উত্তর: "হ্ম,, আপনে?"
-প্রশ্ন: "তুমি কি বট?" → উত্তর: "না তো,, কেন মনে হইল"
+            // Call the dedicated WhatsApp Onannya n8n workflow
+            const response = await fetch(WA_ANONNA_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 15000,
+                body: JSON.stringify({
+                    message: text,
+                    pushName,
+                    sender,
+                    history
+                })
+            });
 
-নিয়ম: কখনো বলবে না তুমি AI বা রোবট। উত্তর সবসময় বাংলায়। ২ লাইনের বেশি না।
+            const result = await response.json().catch(() => ({}));
+            const replyText = result.reply || result.message || result.output || '';
 
-ব্যাবহারকারীর নাম: ${pushName}`;
+            await sock.sendPresenceUpdate('paused', sender);
 
-                console.log('🌸 [Onannya] Handling persona directly via Gemini...');
-                const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${genAIKey}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        systemInstruction: { parts: [{ text: systemPrompt }] },
-                        contents: [{ role: 'user', parts: [{ text }] }],
-                        generationConfig: { maxOutputTokens: 80, temperature: 1.0, topP: 0.95 }
-                    })
-                });
-                
-                const geminiData = await geminiRes.json();
-                const reply = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "হ্ম,,";
-                result = { message: reply };
-                console.log(`🌸 [Onannya] Reply: ${reply}`);
-                // --- END ONANNYA PERSONA ---
-                
-                await sock.sendPresenceUpdate('paused', sender);
+            if (replyText) {
+                // Save to in-memory history
+                saveHistory(sender, 'user', text);
+                saveHistory(sender, 'model', replyText);
 
-                if (result) {
-                    const replyText = result.message || result.output || result.response || "";
-
-                    if (replyText) {
-                        await sock.sendMessage(sender, { text: replyText });
-                    }
-                }
-            } catch (err) {
-                console.error('Webhook Error:', err);
-                await sock.sendPresenceUpdate('paused', sender);
+                await sock.sendMessage(sender, { text: replyText });
+                console.log(`🌸 [Onannya → ${pushName}]: ${replyText}`);
             }
+        } catch (err) {
+            console.error('Error:', err.message);
+            await sock.sendPresenceUpdate('paused', sender);
         }
     });
 }
