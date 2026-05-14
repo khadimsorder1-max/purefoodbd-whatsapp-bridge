@@ -6,7 +6,7 @@ const fetch = require('node-fetch');
 const qrcode = require('qrcode-terminal');
 
 // n8n webhook — Onannya persona engine (Gemini free models + sheet-based memory)
-const N8N_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook-test/wa-anonna';
+const N8N_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook/wa-anonna';
 
 // Health-check HTTP server (Railway needs a port listener)
 const PORT = process.env.PORT || 3000;
