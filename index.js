@@ -1,11 +1,21 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay, Browsers } = require('baileys');
 const pino = require('pino');
 const fs = require('fs');
+const http = require('http');
 const fetch = require('node-fetch');
 const qrcode = require('qrcode-terminal');
 
 // n8n webhook — Onannya persona engine (Gemini free models + sheet-based memory)
 const N8N_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook-test/wa-anonna';
+
+// Health-check HTTP server (Railway needs a port listener)
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('🌸 Onannya is alive!');
+}).listen(PORT, () => {
+    console.log(`🌐 Health server on port ${PORT}`);
+});
 
 // In-memory chat history per sender (last 10 turns) — forwarded to n8n each request
 const historyMap = {};
