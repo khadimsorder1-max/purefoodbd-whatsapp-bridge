@@ -6,7 +6,7 @@ const http = require('http');
 const qrcode = require('qrcode-terminal');
 
 // n8n Webhook URL (New Unique Path)
-const N8N_WEBHOOK_URL = "https://n8n-server-sr4v.onrender.com/webhook/wa-romance-v5";
+const N8N_WEBHOOK_URL = "https://n8n-server-sr4v.onrender.com/webhook/wa-romance-secret-v7";
 
 // Health-check HTTP server
 const PORT = process.env.PORT || 3000;
