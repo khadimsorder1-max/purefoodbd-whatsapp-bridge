@@ -1,55 +1,45 @@
+require('dotenv').config();
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, delay, Browsers } = require('baileys');
 const pino = require('pino');
 const fs = require('fs');
 const http = require('http');
-const fetch = require('node-fetch');
 const qrcode = require('qrcode-terminal');
 
-// n8n webhook — Onannya persona engine (Gemini free models + sheet-based memory)
-const N8N_WEBHOOK = 'https://n8n-server-sr4v.onrender.com/webhook/wa-anonna';
+// n8n Webhook URL
+const N8N_WEBHOOK_URL = "https://n8n-server-sr4v.onrender.com/webhook/wa-anonna-romance";
 
-// Health-check HTTP server (Railway needs a port listener)
+// Health-check HTTP server
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('🌸 Onannya is alive!');
+    res.end('🌸 Onannya Bridge is alive and connected to n8n!');
 }).listen(PORT, () => {
     console.log(`🌐 Health server on port ${PORT}`);
 });
 
-// In-memory chat history per sender (last 10 turns) — forwarded to n8n each request
-const historyMap = {};
-function getHistory(id) { return historyMap[id] || []; }
-function addHistory(id, role, text) {
-    if (!historyMap[id]) historyMap[id] = [];
-    historyMap[id].push({ role, content: text });
-    if (historyMap[id].length > 10) historyMap[id].splice(0, 2);
-}
+async function askN8N(sender, pushName, text) {
+    try {
+        console.log(`📡 Sending to n8n: ${text}`);
+        const response = await fetch(N8N_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sender,
+                pushName,
+                message: text,
+                timestamp: new Date().toISOString()
+            })
+        });
 
-async function askAnonna(sender, pushName, text) {
-    const history = getHistory(sender);
-
-    // Forward to n8n — n8n handles Gemini (all free models) + sheet-based per-user memory
-    const res = await fetch(N8N_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            message: text,
-            pushName: pushName,
-            sender: sender,
-            history: history  // n8n uses this + its own sheet memory
-        })
-    });
-
-    const data = await res.json();
-    // n8n returns { reply: "..." } or { message: "..." }
-    const reply = data?.reply || data?.message || data?.data?.reply || 'হ্ম,,';
-
-    // Save to local history (cache)
-    addHistory(sender, 'user', text);
-    addHistory(sender, 'model', reply);
-
-    return reply;
+        const data = await response.json();
+        console.log(`📥 Received from n8n: ${JSON.stringify(data)}`);
+        
+        // n8n returns { reply: "..." } from our Final Response node
+        return data.reply || "হুম,,"; 
+    } catch (error) {
+        console.error("n8n Bridge Error:", error);
+        return "হুম,, আসলে একটু নেটে সমস্যা হচ্ছে মনে হয়... কি বলছিলেন?"; 
+    }
 }
 
 async function connectToWhatsApp() {
@@ -72,15 +62,14 @@ async function connectToWhatsApp() {
         const { id, from, status } = call[0];
         if (status === 'offer') {
             await sock.rejectCall(id, from);
-            await sock.sendMessage(from, { text: 'দুঃখিত,, কল সাপোর্ট নাই,, লিখে পাঠান' });
+            await sock.sendMessage(from, { text: 'ইয়ে,, কল দিয়েন না প্লিজ... মেসেজ লিখুন।' });
         }
     });
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            console.log('📱 Scan QR:');
-            console.log(`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=300x300`);
+            console.log('📱 Scan QR to login Onannya Bridge:');
             qrcode.generate(qr, { small: true });
         }
         if (connection === 'close') {
@@ -89,12 +78,13 @@ async function connectToWhatsApp() {
                 console.log('Reconnecting...');
                 setTimeout(connectToWhatsApp, 5000);
             } else {
-                fs.rmSync('./auth_info', { recursive: true, force: true });
+                if (fs.existsSync('./auth_info')) {
+                    fs.rmSync('./auth_info', { recursive: true, force: true });
+                }
                 setTimeout(connectToWhatsApp, 3000);
             }
         } else if (connection === 'open') {
-            console.log('✅ WhatsApp Connected! 🌸 Onannya is ready');
-            console.log('📡 n8n webhook:', N8N_WEBHOOK);
+            console.log('✅ WhatsApp Bridge Connected! 🌸 Onannya is now powered by n8n!');
         }
     });
 
@@ -104,6 +94,8 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe || !msg.message) return;
 
         const sender = msg.key.remoteJid;
+        if (sender.includes('@g.us')) return; // Ignore groups
+
         const pushName = msg.pushName || 'বন্ধু';
         const text = msg.message.conversation
             || msg.message.extendedTextMessage?.text
@@ -116,16 +108,18 @@ async function connectToWhatsApp() {
         console.log(`📩 [${pushName}]: ${text}`);
 
         try {
-            await delay(400);
+            await delay(1000); 
             await sock.sendPresenceUpdate('composing', sender);
 
-            const reply = await askAnonna(sender, pushName, text);
+            const reply = await askN8N(sender, pushName, text);
 
+            await delay(Math.max(1000, reply.length * 100)); 
             await sock.sendPresenceUpdate('paused', sender);
+            
             await sock.sendMessage(sender, { text: reply });
             console.log(`🌸 [Onannya]: ${reply}`);
         } catch (err) {
-            console.error('Error:', err.message);
+            console.error('Bridge Message Error:', err.message);
             await sock.sendPresenceUpdate('paused', sender);
         }
     });
