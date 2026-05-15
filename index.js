@@ -5,8 +5,8 @@ const fs = require('fs');
 const http = require('http');
 const qrcode = require('qrcode-terminal');
 
-// n8n Webhook URL
-const N8N_WEBHOOK_URL = "https://n8n-server-sr4v.onrender.com/webhook/wa-anonna-romance";
+// n8n Webhook URL (New Unique Path)
+const N8N_WEBHOOK_URL = "https://n8n-server-sr4v.onrender.com/webhook/wa-romance-v5";
 
 // Health-check HTTP server
 const PORT = process.env.PORT || 3000;
