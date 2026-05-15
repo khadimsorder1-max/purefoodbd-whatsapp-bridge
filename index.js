@@ -34,11 +34,14 @@ async function askN8N(sender, pushName, text) {
         const data = await response.json();
         console.log(`📥 Received from n8n: ${JSON.stringify(data)}`);
         
-        // n8n returns { reply: "..." } from our Final Response node
-        return data.reply || "হুম,,"; 
+        // n8n returns { reply: "...", reaction: "❤️" }
+        return {
+            reply: data.reply || "হুম,,",
+            reaction: data.reaction || null
+        }; 
     } catch (error) {
         console.error("n8n Bridge Error:", error);
-        return "হুম,, আসলে একটু নেটে সমস্যা হচ্ছে মনে হয়... কি বলছিলেন?"; 
+        return { reply: "হুম,, আসলে একটু নেটে সমস্যা হচ্ছে মনে হয়...", reaction: null }; 
     }
 }
 
@@ -111,13 +114,17 @@ async function connectToWhatsApp() {
             await delay(1000); 
             await sock.sendPresenceUpdate('composing', sender);
 
-            const reply = await askN8N(sender, pushName, text);
+            const { reply, reaction } = await askN8N(sender, pushName, text);
+
+            if (reaction) {
+                await sock.sendMessage(sender, { react: { text: reaction, key: msg.key } });
+            }
 
             await delay(Math.max(1000, reply.length * 100)); 
             await sock.sendPresenceUpdate('paused', sender);
             
             await sock.sendMessage(sender, { text: reply });
-            console.log(`🌸 [Onannya]: ${reply}`);
+            console.log(`🌸 [Onannya]: ${reply} (Reaction: ${reaction})`);
         } catch (err) {
             console.error('Bridge Message Error:', err.message);
             await sock.sendPresenceUpdate('paused', sender);
