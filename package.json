@@ -1,6 +1,6 @@
 {
-  "name": "purefoodbd-wa-bot",
-  "version": "1.0.0",
+  "name": "onannya-romance-bridge",
+  "version": "5.2.0",
   "main": "index.js",
   "engines": {
     "node": "20.x"
@@ -9,12 +9,9 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "axios": "^1.16.1",
-    "baileys": "latest",
-    "dotenv": "^17.4.2",
-    "node-fetch": "2.6.0",
-    "papaparse": "^5.5.3",
-    "pino": "8.19.0",
+    "baileys": "^6.6.0",
+    "dotenv": "^16.4.5",
+    "pino": "^8.21.0",
     "qrcode-terminal": "^0.12.0"
   }
 }
